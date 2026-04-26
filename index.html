@@ -1,1 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>護理人員自主預班系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body class="bg-[#F8FAFC] min-h-screen pb-10">
+    <!-- 系統載入動畫 -->
+    <div id="loading" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
+        <div class="w-14 h-14 border-4 border-[#00B900] border-t-transparent rounded-full animate-spin"></div>
+        <p class="mt-4 text-[#00B900] font-bold tracking-[0.2em] text-sm">系統載入中...</p>
+    </div>
 
+    <!-- 頂部綠色導航列 -->
+    <nav class="bg-[#00B900] text-white p-5 sticky top-0 z-40 flex justify-between items-end shadow-md">
+        <div>
+            <span class="text-[10px] opacity-70 font-black uppercase tracking-widest">Nursing Dept. 12A</span>
+            <h1 class="font-black text-2xl flex items-center gap-1">
+                <span id="targetMonthDisplay"></span> <span class="text-lg font-medium opacity-90">預班表</span>
+            </h1>
+        </div>
+        <div id="userName" class="text-[10px] bg-black/10 px-3 py-1.5 rounded-full border border-white/20 font-bold">
+            驗證身分中...
+        </div>
+    </nav>
+
+    <main class="max-w-md mx-auto p-5 space-y-5">
+        <!-- 狀態統計卡片 -->
+        <div id="statusCard" class="bg-white p-7 rounded-[2.5rem] shadow-sm border-2 border-gray-100 transition-all duration-500">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h2 class="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-1">當前預計總天數</h2>
+                    <div class="flex items-baseline gap-1">
+                        <span id="totalDays" class="text-6xl font-black text-[#00B900]">0</span>
+                        <span class="text-gray-300 font-bold text-2xl">/ 17</span>
+                    </div>
+                </div>
+                <div id="limitAlert" class="hidden text-right">
+                    <span class="bg-red-500 text-white px-3 py-1.5 rounded-full text-[10px] font-black animate-bounce inline-block shadow-lg">
+                        ⚠️ 超過上限
+                    </span>
+                    <p class="text-[10px] text-red-500 mt-2 font-bold leading-tight">請減少預班<br>天數</p>
+                </div>
+            </div>
+            
+            <!-- 進度條 -->
+            <div class="mt-6 w-full bg-gray-100 h-4 rounded-full overflow-hidden p-1 border border-gray-50">
+                <div id="progressBar" class="bg-[#00B900] h-full rounded-full transition-all duration-700 w-0"></div>
+            </div>
+            <div class="flex justify-between mt-4">
+                <p class="text-[10px] text-gray-300 font-bold italic">規則：期望(休+370+371) ≦ 17天</p>
+                <p class="text-[10px] text-gray-400 font-bold" id="detailCount">0 休 | 0 白 | 0 夜</p>
+            </div>
+        </div>
+
+        <!-- 日曆選擇區 -->
+        <div class="bg-white p-6 rounded-[2.5rem] shadow-sm">
+            <div class="flex justify-between items-center mb-5 px-1">
+                <h3 class="font-black text-gray-700 flex items-center gap-2 text-sm">
+                    📍 選擇期望休假
+                </h3>
+                <span id="leaveBadge" class="text-[10px] font-black text-[#00B900] bg-[#00B900]/5 px-3 py-1.5 rounded-full">0 / 5 天</span>
+            </div>
+            <div id="calendar" class="calendar-grid">
+                <!-- 由 JavaScript 生成 -->
+            </div>
+        </div>
+
+        <!-- 班別選擇區 -->
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white p-5 rounded-[2.5rem] shadow-sm border border-gray-50 text-center">
+                <label class="text-[11px] font-black text-blue-500 uppercase tracking-widest block mb-3">白班 (370)</label>
+                <div class="flex items-center justify-between bg-blue-50/50 p-2 rounded-2xl">
+                    <button onclick="adjust('in370', -1)" class="w-10 h-10 rounded-xl bg-white shadow-sm text-blue-600 font-black text-xl active:scale-90">-</button>
+                    <input type="number" id="in370" value="0" readonly class="w-10 text-center text-3xl font-black text-blue-600 bg-transparent outline-none">
+                    <button onclick="adjust('in370', 1)" class="w-10 h-10 rounded-xl bg-white shadow-sm text-blue-600 font-black text-xl active:scale-90">+</button>
+                </div>
+            </div>
+            <div class="bg-white p-5 rounded-[2.5rem] shadow-sm border border-gray-50 text-center">
+                <label class="text-[11px] font-black text-purple-500 uppercase tracking-widest block mb-3">夜班 (371)</label>
+                <div class="flex items-center justify-between bg-purple-50/50 p-2 rounded-2xl">
+                    <button onclick="adjust('in371', -1)" class="w-10 h-10 rounded-xl bg-white shadow-sm text-purple-600 font-black text-xl active:scale-90">-</button>
+                    <input type="number" id="in371" value="0" readonly class="w-10 text-center text-3xl font-black text-purple-600 bg-transparent outline-none">
+                    <button onclick="adjust('in371', 1)" class="w-10 h-10 rounded-xl bg-white shadow-sm text-purple-600 font-black text-xl active:scale-90">+</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 送出按鈕 -->
+        <div class="pt-4">
+            <button id="saveBtn" onclick="submitData()" 
+                class="w-full bg-[#00B900] text-white py-6 rounded-3xl font-black text-xl shadow-xl shadow-green-100 active:scale-95 transition-all flex items-center justify-center gap-3">
+                確認送出預班資料
+            </button>
+        </div>
+    </main>
+
+    <script>
+        const LIFF_ID = "2009897238-XeeTxYqp"; 
+        let selectedDays = [];
+        let profile = null;
+
+        // 計算下個月
+        const now = new Date();
+        const targetYear = now.getMonth() + 1 === 12 ? now.getFullYear() + 1 : now.getFullYear();
+        const targetMonth = now.getMonth() + 2 > 12 ? 1 : now.getMonth() + 2;
+        document.getElementById('targetMonthDisplay').innerText = `${targetYear}/${targetMonth}`;
+
+        async function init() {
+            try {
+                await liff.init({ liffId: LIFF_ID });
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                    return;
+                }
+                profile = await liff.getProfile();
+                document.getElementById('userName').innerText = `護理師：${profile.displayName}`;
+                renderCalendar();
+                document.getElementById('loading').style.display = 'none';
+            } catch (err) {
+                console.error(err);
+                alert("系統初始化失敗，請聯絡阿長檢查 LINE 設定。");
+            }
+        }
+
+        function renderCalendar() {
+            const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+            const container = document.getElementById('calendar');
+            container.innerHTML = '';
+            for (let i = 1; i <= daysInMonth; i++) {
+                const btn = document.createElement('button');
+                btn.innerText = i;
+                btn.className = "h-11 rounded-xl font-black transition-all border border-gray-100 bg-gray-50 text-gray-400 text-sm";
+                btn.onclick = () => toggleDay(i, btn);
+                container.appendChild(btn);
+            }
+        }
+
+        function toggleDay(day, el) {
+            if (selectedDays.includes(day)) {
+                selectedDays = selectedDays.filter(d => d !== day);
+                el.className = "h-11 rounded-xl font-black transition-all border border-gray-100 bg-gray-50 text-gray-400 text-sm";
+            } else {
+                if (selectedDays.length >= 5) {
+                    alert("⚠️ 阿長規定：期望休假上限為 5 天喔！");
+                    return;
+                }
+                selectedDays.push(day);
+                el.className = "h-11 rounded-xl font-black transition-all bg-[#00B900] text-white shadow-md border-[#00B900]";
+            }
+            calculateTotal();
+        }
+
+        function adjust(id, val) {
+            const el = document.getElementById(id);
+            let current = parseInt(el.value);
+            current = Math.max(0, current + val);
+            el.value = current;
+            calculateTotal();
+        }
+
+        function calculateTotal() {
+            const v370 = parseInt(document.getElementById('in370').value);
+            const v371 = parseInt(document.getElementById('in371').value);
+            const total = selectedDays.length + v370 + v371;
+            
+            document.getElementById('totalDays').innerText = total;
+            document.getElementById('leaveBadge').innerText = `${selectedDays.length} / 5 天`;
+            document.getElementById('detailCount').innerText = `${selectedDays.length} 休 | ${v370} 白 | ${v371} 夜`;
+
+            const saveBtn = document.getElementById('saveBtn');
+            const statusCard = document.getElementById('statusCard');
+            const progressBar = document.getElementById('progressBar');
+            const limitAlert = document.getElementById('limitAlert');
+            
+            const percentage = Math.min((total / 17) * 100, 100);
+            progressBar.style.width = percentage + '%';
+
+            if (total > 17) {
+                document.getElementById('totalDays').className = "text-6xl font-black text-red-500 transition-colors";
+                saveBtn.disabled = true;
+                saveBtn.className = "w-full bg-gray-200 text-gray-400 py-6 rounded-3xl font-black text-xl cursor-not-allowed";
+                saveBtn.innerText = "❌ 超過 17 天上限";
+                statusCard.style.borderColor = "#ef4444";
+                statusCard.style.backgroundColor = "#fef2f2";
+                progressBar.className = "bg-red-500 h-full rounded-full transition-all duration-700 w-full";
+                limitAlert.classList.remove('hidden');
+            } else {
+                document.getElementById('totalDays').className = "text-6xl font-black text-[#00B900] transition-colors";
+                saveBtn.disabled = false;
+                saveBtn.className = "w-full bg-[#00B900] text-white py-6 rounded-3xl font-black text-xl shadow-xl shadow-green-100 active:scale-95 transition-all";
+                saveBtn.innerText = "確認送出預班資料";
+                statusCard.style.borderColor = "#f3f4f6";
+                statusCard.style.backgroundColor = "#ffffff";
+                progressBar.className = "bg-[#00B900] h-full rounded-full transition-all duration-700";
+                limitAlert.classList.add('hidden');
+            }
+        }
+
+        function submitData() {
+            const v370 = document.getElementById('in370').value;
+            const v371 = document.getElementById('in371').value;
+            const total = selectedDays.length + parseInt(v370) + parseInt(v371);
+            
+            if (!confirm(`確認提交 ${targetYear}/${targetMonth} 月的預班表嗎？`)) return;
+
+            const text = `【12A 預班通知】\n━━━━━━━━━━━━\n👤 護理師：${profile.displayName}\n🗓️ 月份：${targetYear}/${targetMonth}\n━━━━━━━━━━━━\n🏖️ 期望休假(${selectedDays.length}天)：\n   ${selectedDays.length > 0 ? selectedDays.sort((a,b)=>a-b).join(', ') + ' 號' : '無'}\n\n☀️ 白班(370)：${v370} 天\n🌙 夜班(371)：${v371} 天\n📊 總計天數：${total} 天\n━━━━━━━━━━━━\n系統提示：資料已傳送至阿長對話框。`;
+            
+            liff.sendMessages([{
+                type: 'text',
+                text: text
+            }]).then(() => {
+                alert("🎉 提交成功！");
+                liff.closeWindow();
+            }).catch((err) => {
+                console.error(err);
+                alert("傳送失敗，請確認已加入好友。");
+            });
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
